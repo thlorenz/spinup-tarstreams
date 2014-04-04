@@ -1,4 +1,5 @@
 'use strict';
+
 var runnel    = require('runnel')
   , dockerode = require('dockerode')
   , xtend     = require('xtend')
@@ -9,10 +10,10 @@ function imageName(group, id) {
   return group + ':' + id;
 }
 
-function buildImages(images, streamfns, opts, cb) {
+function buildImages(images, streamfns, group, cb) {
   var tasks = Object.keys(streamfns)
     .map(function (k) {
-      var image = imageName(opts.group, k)
+      var image = imageName(group, k)
         , streamfn = streamfns[k];
 
       return function (cb_) {
@@ -24,27 +25,19 @@ function buildImages(images, streamfns, opts, cb) {
 }
 
 function createDocker(opts) {
-  var dockerhost = opts.dockerhost 
-    , parts      = dockerhost.split(':')    
+  var dockerhost = opts.dockerhost
+    , parts      = dockerhost.split(':')
     , host       = parts.slice(0, -1).join(':').replace(/^tcp/, 'http')
     , port       = parts[parts.length - 1]
 
   return dockerode({ host: host, port: port });
 }
 
-var defaultOpts = { 
+var defaultOpts = {
     dockerhost: process.env.DOCKER_HOST || 'tcp://127.0.0.1:4243'
-  , group: 'ungrouped' 
+  , group: 'ungrouped'
 };
 
-
-  /*images
-    .on('processing' , function (info) { log.silly  ('images', 'processing\n', inspect(info)); })
-    .on('building'   , function (info) { log.verbose('images', 'building\n', inspect  (info)); })
-    .on('built'      , function (info) { log.info   ('images', 'built\n', inspect     (info)); })
-    .on('msg'        , function (msg)  { log.silly  ('images', 'msg', msg); })
-    .on('warn'       , function (err)  { log.warn   ('images', 'warn', err); })
-    .on('error'      , function (err)  { log.error  ('images', 'error', err); });*/
 
 var go = module.exports = function (streamfns, opts, cb) {
   if (typeof opts === 'function') {
@@ -53,12 +46,12 @@ var go = module.exports = function (streamfns, opts, cb) {
   }
 
   opts = xtend(defaultOpts, opts);
-  opts.docker = opts.docker || createDocker(opts)
+  opts.docker = opts.docker || createDocker(opts);
 
   var images = new Images(opts.docker);
   logEvents(images);
 
-  buildImages(images, streamfns, opts, function (err, res) {
+  buildImages(images, streamfns, opts.group, function (err, res) {
     if (err) return cb(err);
     cb(null, res);
   });
@@ -68,7 +61,7 @@ var go = module.exports = function (streamfns, opts, cb) {
 
 // provide way to query for all containers/images for a given repo
 
-// provide a way to stop all containers for a matching group (i.e. repo name) 
+// provide a way to stop all containers for a matching group (i.e. repo name)
 
 // provide a way to remove all containers for a group
 
@@ -84,9 +77,9 @@ function filter(tag) {
 if (!module.parent && typeof window === 'undefined') {
   dockerifyRepo('thlorenz/browserify-markdown-editor', { filter: filter }, function (err, streamfns) {
     if (err) return console.error(err);
-    go(streamfns, function (err, res) {
+    go(streamfns,{ group: 'bmarkdown' }, function (err, res) {
       if (err) return console.error(err);
-      console.log(res);  
+      console.log(res);
     });
   });
 }
