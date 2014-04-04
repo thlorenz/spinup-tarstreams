@@ -6,7 +6,7 @@ var runnel    = require('runnel')
   , Images    = require('./lib/images')
 
 function imageName(group, id) {
-  return group + ':' id;
+  return group + ':' + id;
 }
 
 function buildImages(images, streamfns, opts, cb) {
@@ -46,7 +46,12 @@ var defaultOpts = {
     .on('warn'       , function (err)  { log.warn   ('images', 'warn', err); })
     .on('error'      , function (err)  { log.error  ('images', 'error', err); });*/
 
-var go = module.exports = function (streamfns, opts) {
+var go = module.exports = function (streamfns, opts, cb) {
+  if (typeof opts === 'function') {
+    cb = opts;
+    opts = null;
+  }
+
   opts = xtend(defaultOpts, opts);
   opts.docker = opts.docker || createDocker(opts)
 
@@ -54,8 +59,8 @@ var go = module.exports = function (streamfns, opts) {
   logEvents(images);
 
   buildImages(images, streamfns, opts, function (err, res) {
-    if (err) return console.error(err);
-    console.log(res);  
+    if (err) return cb(err);
+    cb(null, res);
   });
 }
 
@@ -70,6 +75,18 @@ var go = module.exports = function (streamfns, opts) {
 // provide a way to remove all images for a group
 
 // Test
+
+var dockerifyRepo = require('dockerify-github-repo');
+function filter(tag) {
+  return tag === '000-nstarted' || tag === '009-improved-styling';
+}
+
 if (!module.parent && typeof window === 'undefined') {
-  
+  dockerifyRepo('thlorenz/browserify-markdown-editor', { filter: filter }, function (err, streamfns) {
+    if (err) return console.error(err);
+    go(streamfns, function (err, res) {
+      if (err) return console.error(err);
+      console.log(res);  
+    });
+  });
 }

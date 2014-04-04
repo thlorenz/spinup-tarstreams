@@ -16,11 +16,15 @@
   },
   "homepage": "https://github.com/thlorenz/spinup-tarstreams",
   "dependencies": {
+    "dockerode": "~1.2.9",
     "npmlog": "0.0.6",
-    "xtend": "^2.2.0"
+    "runnel": "~0.5.2",
+    "xtend": "~2.2.0"
   },
   "devDependencies": {
+    "dockerify-github-repo": "~0.2.1",
     "nave": "~0.4.3",
+    "npmlog": "0.0.6",
     "tap": "~0.4.3"
   },
   "keywords": [],
