@@ -16,13 +16,12 @@
   },
   "homepage": "https://github.com/thlorenz/spinup-tarstreams",
   "dependencies": {
+    "npmlog": "0.0.6",
     "xtend": "^2.2.0"
   },
   "devDependencies": {
     "nave": "~0.4.3",
-    "npmlog": "0.0.6",
-    "tap": "~0.4.3",
-    "tape": "~1.0.4"
+    "tap": "~0.4.3"
   },
   "keywords": [],
   "author": {
