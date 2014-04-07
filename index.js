@@ -45,7 +45,14 @@ function runContainers(containers, opts, imageNames, cb) {
   var tasks = imageNames
     .map(function (imageName, idx) {
       return function (cb_) {
-        var pb = portBindings(opts.exposePort, opts.hostPortStart + idx);
+        var pb = {};
+
+        // ensure we expose port properly as well as binding it 
+        if (opts.exposePort && opts.create) {
+          pb = portBindings(opts.exposePort, opts.hostPortStart + idx);
+          opts.create.ExposedPorts = opts.create.ExposedPorts || {};
+          opts.create.ExposedPorts[opts.exposePort + '/tcp'] = {};
+        }
 
         containers.run(
           { create : xtend(opts.create, { Image : imageName })
@@ -89,7 +96,6 @@ var defaultContainerOpts = {
     }
   , start: {
       PublishAllPorts : true
-    , Cmd: ['bash', '-c', 'npm start'] 
     }
 }
 
@@ -126,7 +132,7 @@ var go = module.exports = function (streamfns, opts, cb) {
 
 var dockerifyRepo = require('dockerify-github-repo');
 function filter(tag) {
-  return tag === '000-nstarted' || tag === '009-improved-styling';
+  return /*tag === '000-nstarted' || */ tag === '009-improved-styling';
 }
 
 function createImages() {
@@ -144,14 +150,14 @@ function createImages() {
 
 function createContainers(images, opts, cb) {
   var imageNames = images.map(function (x) { return x.RepoTags[0] });
-  var containers = new Containers(createDocker(opts));
+  var containers = new Containers(createDocker(defaultOpts));
   logEvents(containers);
 
-  runContainers(containers, defaultContainerOpts, imageNames, cb);
+  runContainers(containers, opts, imageNames, cb);
 }
 
-function createContainersForGroup(group) {
-  var images = new Images(createDocker(opts));
+function createContainersForGroup(group, opts) {
+  var images = new Images(createDocker(defaultOpts));
   images.listGroup(group, function (err, res) {
     if (err) return console.error(err);
 
@@ -163,7 +169,9 @@ function createContainersForGroup(group) {
 }
 
 if (!module.parent && typeof window === 'undefined') {
-  var opts = xtend(defaultOpts, {});
+  var containerOpts = xtend(defaultContainerOpts, { exposePort: 3000 });
   //createImages();
-  createContainersForGroup('bmarkdown');
+  // TODO: port forwarding broken, needs to look like this:
+  // 9186065b0292        bmarkdown:009-improved-styling   bash About a minute ago   Up About a minute   0.0.0.0:49222->3000/tcp   high_davinci
+  createContainersForGroup('bmarkdown', containerOpts);
 }
