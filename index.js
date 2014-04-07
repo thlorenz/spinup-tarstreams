@@ -1,11 +1,24 @@
 'use strict';
 
-var runnel    = require('runnel')
-  , dockerode = require('dockerode')
-  , xtend     = require('xtend')
-  , logEvents = require('./lib/log-events')
-  , Images    = require('./lib/images')
+var path         = require('path')
+  , runnel       = require('runnel')
+  , dockerode    = require('dockerode')
+  , xtend        = require('xtend')
+  , logEvents    = require('./lib/log-events')
+  , Images       = require('./lib/images')
+  , Containers   = require('./lib/containers')
+  , portBindings = require('./lib/port-bindings')
 
+function createDocker(opts) {
+  var dockerhost = opts.dockerhost
+    , parts      = dockerhost.split(':')
+    , host       = parts.slice(0, -1).join(':').replace(/^tcp/, 'http')
+    , port       = parts[parts.length - 1]
+
+  return dockerode({ host: host, port: port });
+}
+
+// images
 function imageName(group, id) {
   return group + ':' + id;
 }
@@ -24,20 +37,61 @@ function buildImages(images, streamfns, group, cb) {
   runnel(tasks.concat(cb));
 }
 
-function createDocker(opts) {
-  var dockerhost = opts.dockerhost
-    , parts      = dockerhost.split(':')
-    , host       = parts.slice(0, -1).join(':').replace(/^tcp/, 'http')
-    , port       = parts[parts.length - 1]
+// containers
+function runContainers(containers, opts, imageNames, cb) {
+  var created = {};
 
-  return dockerode({ host: host, port: port });
+  // todo: async-reduce
+  var tasks = imageNames
+    .map(function (imageName, idx) {
+      return function (cb_) {
+        var pb = portBindings(opts.exposePort, opts.hostPortStart + idx);
+
+        containers.run(
+          { create : xtend(opts.create, { Image : imageName })
+          , start  : xtend(opts.start, { PortBindings: pb })
+          }
+        , function (err, container) { 
+            if (err) return cb_(err);
+            created[container.id] = { 
+                container : container
+              , image     : imageName
+              , ports     : {
+                    exposed : opts.exposePort
+                  , host    : opts.hostPortStart + idx
+                }
+            }
+            cb_() 
+          }
+        );
+      }
+    })
+
+  runnel(tasks.concat(function (err) {
+    if (err) return cb(err);
+    cb(null, created);  
+  }))
 }
 
 var defaultOpts = {
-    dockerhost: process.env.DOCKER_HOST || 'tcp://127.0.0.1:4243'
-  , group: 'ungrouped'
+    dockerhost    : process.env.DOCKER_HOST || 'tcp : //127.0.0.1 : 4243'
+  , group         : 'ungrouped'
 };
 
+var defaultContainerOpts = {
+    hostPortStart   : 49222
+  , exposePort      : 8080
+  , startRetries    : 5
+  , create: {
+      AttachStdout    : true
+    , AttachStderr    : true
+    , WorkingDir      : 'src'
+    }
+  , start: {
+      PublishAllPorts : true
+    , Cmd: ['bash', '-c', 'npm start'] 
+    }
+}
 
 var go = module.exports = function (streamfns, opts, cb) {
   if (typeof opts === 'function') {
@@ -45,8 +99,11 @@ var go = module.exports = function (streamfns, opts, cb) {
     opts = null;
   }
 
-  opts = xtend(defaultOpts, opts);
-  opts.docker = opts.docker || createDocker(opts);
+  opts                  = xtend(defaultOpts, opts);
+  opts.docker           = opts.docker || createDocker(opts);
+  opts.container        = opts.container || {};
+  opts.container.create = xtend(defaultContainerOpts.create, opts.container.create);
+  opts.container.start  = xtend(defaultContainerOpts.start, opts.container.start);
 
   var images = new Images(opts.docker);
   logEvents(images);
@@ -56,8 +113,6 @@ var go = module.exports = function (streamfns, opts, cb) {
     cb(null, res);
   });
 }
-
-// create container for each
 
 // provide way to query for all containers/images for a given repo
 
@@ -74,12 +129,41 @@ function filter(tag) {
   return tag === '000-nstarted' || tag === '009-improved-styling';
 }
 
-if (!module.parent && typeof window === 'undefined') {
-  dockerifyRepo('thlorenz/browserify-markdown-editor', { filter: filter }, function (err, streamfns) {
+function createImages() {
+  dockerifyRepo(
+      'thlorenz/browserify-markdown-editor'
+    , { filter: filter, dockerify: {  dockerfile: path.join(__dirname, 'lib', 'Dockerfile') } }
+    , function (err, streamfns) {
+        if (err) return console.error(err);
+        go(streamfns,{ group: 'bmarkdown' }, function (err, res) {
+          if (err) return console.error(err);
+          console.log(res);
+        });
+      });
+}
+
+function createContainers(images, opts, cb) {
+  var imageNames = images.map(function (x) { return x.RepoTags[0] });
+  var containers = new Containers(createDocker(opts));
+  logEvents(containers);
+
+  runContainers(containers, defaultContainerOpts, imageNames, cb);
+}
+
+function createContainersForGroup(group) {
+  var images = new Images(createDocker(opts));
+  images.listGroup(group, function (err, res) {
     if (err) return console.error(err);
-    go(streamfns,{ group: 'bmarkdown' }, function (err, res) {
+
+    createContainers(res, opts, function (err, res) {
       if (err) return console.error(err);
-      console.log(res);
-    });
+      console.log(res);    
+    })
   });
+}
+
+if (!module.parent && typeof window === 'undefined') {
+  var opts = xtend(defaultOpts, {});
+  //createImages();
+  createContainersForGroup('bmarkdown');
 }
