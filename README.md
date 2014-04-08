@@ -3,20 +3,17 @@
 Spins up tar streams each in it's own docker container.
 
 ```js
-var path = require('path') 
+var path          = require('path')
   , dockerifyRepo = require('dockerify-github-repo')
-  , spinup = require('../')
+  , spinup        = require('spinup-tarstreams')
 
 var group = 'bmarkdown';
 
-function filter(tag) {
-  var num = parseInt(tag.split('-')[0], 10);
-  return num === 2;
-}
-
+// we get a tar stream for each tagged release of thlorenz/browserify-markdown-editor
+// and launch a docker container for each to be able to inspect multiple versions of it 
 dockerifyRepo(
     'thlorenz/browserify-markdown-editor'
-  , { filter: filter, dockerify: {  dockerfile: path.join(__dirname, 'Dockerfile') } }
+  , { dockerify: {  dockerfile: path.join(__dirname, 'Dockerfile') } }
   , function (err, streamfns) {
       if (err) return console.error(err);
       launch(group, streamfns)
@@ -24,14 +21,14 @@ dockerifyRepo(
 );
 
 function launch(group, streamfns) {
-  spinup(streamfns, { group: group, loglevel: 'silly', container: { exposePort: 3000 } }, function (err, res) {
+  spinup(streamfns, { group: group, loglevel: 'verbose', container: { exposePort: 3000 } }, function (err, res) {
     if (err) return console.error(err);
     console.log('Started the following containers: ', res);
   });
 }
 ```
 
-[full exampe](https://github.com/thlorenz/spinup-tarstreams/blob/master/examples/github-repo-one-editor.js)
+[full exampe](https://github.com/thlorenz/spinup-tarstreams/blob/master/examples/github-repo-all-editors.js)
 
 ## Status
 
