@@ -48,12 +48,13 @@ exports = module.exports =
 
 /**
  * Creates images for each provided tar stream and then starts a container for each image that matches the given group.
- * This means that containers for already existing images for a group will be started as well in order to allow
+ *
+ * This means that containers for already existing images can be started as well in order to allow
  * reusing existing images instead of having to rebuild them for each run.
  * 
  * Containers are exposing the provided port and bind it to a unique port on the host machine.
  *
- * This is the only API you will need most likely, all that follows is considered advanced API.
+ * This is the only API you will need most likely, **all other functions are considered advanced API**.
  * 
  * @name spinupTarstreams
  * @function

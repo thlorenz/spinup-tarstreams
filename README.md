@@ -58,11 +58,11 @@ Working, but **has no tests** and therefore considered alpha **USE AT YOUR OWN R
 </dt>
 <dd>
 <div class="description">
-<p>Creates images for each provided tar stream and then starts a container for each image that matches the given group.
-This means that containers for already existing images for a group will be started as well in order to allow
+<p>Creates images for each provided tar stream and then starts a container for each image that matches the given group.</p>
+<p>This means that containers for already existing images can be started as well in order to allow
 reusing existing images instead of having to rebuild them for each run.</p>
 <p>Containers are exposing the provided port and bind it to a unique port on the host machine.</p>
-<p>This is the only API you will need most likely, all that follows is considered advanced API.</p>
+<p>This is the only API you will need most likely, <strong>all other functions are considered advanced API</strong>.</p>
 </div>
 <h5>Parameters:</h5>
 <table class="params">
@@ -1201,7 +1201,7 @@ Type
 <li>
 <a href="https://github.com/thlorenz/spinup-tarstreams/blob/master/index.js">index.js</a>
 <span>, </span>
-<a href="https://github.com/thlorenz/spinup-tarstreams/blob/master/index.js#L116">lineno 116</a>
+<a href="https://github.com/thlorenz/spinup-tarstreams/blob/master/index.js#L117">lineno 117</a>
 </li>
 </ul></dd>
 </dl>
@@ -1269,7 +1269,7 @@ Type
 <li>
 <a href="https://github.com/thlorenz/spinup-tarstreams/blob/master/index.js">index.js</a>
 <span>, </span>
-<a href="https://github.com/thlorenz/spinup-tarstreams/blob/master/index.js#L100">lineno 100</a>
+<a href="https://github.com/thlorenz/spinup-tarstreams/blob/master/index.js#L101">lineno 101</a>
 </li>
 </ul></dd>
 </dl>
