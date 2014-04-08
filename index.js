@@ -2,22 +2,13 @@
 
 var path          = require('path')
   , log           = require('npmlog')
-  , dockerode     = require('dockerode')
   , xtend         = require('xtend')
+  , createDocker  = require('./lib/create-docker')
   , logEvents     = require('./lib/log-events')
   , Images        = require('./lib/images')
   , Containers    = require('./lib/containers')
   , buildImages   = require('./lib/build-images')
   , runContainers = require('./lib/run-containers')
-
-function createDocker(opts) {
-  var dockerhost = opts.dockerhost
-    , parts      = dockerhost.split(':')
-    , host       = parts.slice(0, -1).join(':').replace(/^tcp/, 'http')
-    , port       = parts[parts.length - 1]
-
-  return dockerode({ host: host, port: port });
-}
 
 var defaultOpts = {
     dockerhost        : process.env.DOCKER_HOST || 'tcp://127.0.0.1:4243'
