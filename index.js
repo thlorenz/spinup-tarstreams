@@ -1,15 +1,14 @@
 'use strict';
 
-var path         = require('path')
-  , log          = require('npmlog')
-  , runnel       = require('runnel')
-  , dockerode    = require('dockerode')
-  , xtend        = require('xtend')
-  , logEvents    = require('./lib/log-events')
-  , Images       = require('./lib/images')
-  , Containers   = require('./lib/containers')
-  , portBindings = require('./lib/port-bindings')
-  , buildImages  = require('./lib/build-images')
+var path          = require('path')
+  , log           = require('npmlog')
+  , dockerode     = require('dockerode')
+  , xtend         = require('xtend')
+  , logEvents     = require('./lib/log-events')
+  , Images        = require('./lib/images')
+  , Containers    = require('./lib/containers')
+  , buildImages   = require('./lib/build-images')
+  , runContainers = require('./lib/run-containers')
 
 function createDocker(opts) {
   var dockerhost = opts.dockerhost
@@ -20,52 +19,11 @@ function createDocker(opts) {
   return dockerode({ host: host, port: port });
 }
 
-// containers
-function runContainers(containers, opts, imageNames, cb) {
-  var created = {};
-
-  var tasks = imageNames
-    .map(function (imageName, idx) {
-      return function (cb_) {
-        var pb = {};
-
-        // ensure we expose port properly as well as binding it 
-        if (opts.exposePort && opts.create) {
-          pb = portBindings(opts.exposePort, opts.hostPortStart + idx);
-          opts.create.ExposedPorts = opts.create.ExposedPorts || {};
-          opts.create.ExposedPorts[opts.exposePort + '/tcp'] = {};
-        }
-
-        containers.run({ 
-            create : xtend(opts.create, { Image : imageName })
-          , start  : xtend(opts.start, { PortBindings: pb })
-          }
-        , function (err, container) { 
-            if (err) return cb_(err);
-            created[container.id] = { 
-                container : container
-              , image     : imageName
-              , ports     : {
-                    exposed : opts.exposePort
-                  , host    : opts.hostPortStart + idx
-                }
-            }
-            cb_() 
-          }
-        );
-      }
-    })
-
-  runnel(tasks.concat(function (err) {
-    if (err) return cb(err);
-    cb(null, created);  
-  }))
-}
-
 var defaultOpts = {
-    dockerhost        : process.env.DOCKER_HOST || 'tcp : //127.0.0.1 : 4243'
+    dockerhost        : process.env.DOCKER_HOST || 'tcp://127.0.0.1:4243'
   , group             : 'ungrouped'
   , useExistingImages : true
+  , loglevel          : 'info'            
 }
 
 var defaultContainerOpts = {
@@ -82,7 +40,26 @@ var defaultContainerOpts = {
     }
 }
 
-exports = module.exports = function (streamfns, opts, cb) {
+exports = module.exports = 
+
+/**
+ * Creates images for each provided tar stream and then starts a container for each.
+ * Containers are exposing the provided port and bind it to a unique port on the host machine.
+ *
+ * This is the only API you will need most likely, all that follows is considered advanced API.
+ * 
+ * @name spinupTarstreams
+ * @function
+ * @param {Array.<function>} streamfns functions that return a tar stream each
+ * @param {Object} opts             options that describe how each image and container is created and started
+ * @param {string} opts.loglevel    (default: `'info'`) if set logs will be written to `stderr` (@see spinupTarstreams:logEvents)
+ * @param {Object} opts.container   options that describe how each container is created and started (@see spinupTarstreams::runContainers)
+ * @param {string} opts.dockerhost  (default: `$DOCKER_HOST or 'tcp://127.0.0.1:4243'`) the host that docker is running on 
+ * @param {string} opts.group       (default: `'ungrouped'`) the group aka REPOSITORY to which the add the created images
+ * @param {boolean} opts.useExistingImages (default: `true`) if false all images are created, even if one for the group and tag exists 
+ * @param {function} cb             called back when all images were created or with an error
+ */
+function spinupTarstreams(streamfns, opts, cb) {
   if (typeof opts === 'function') {
     cb = opts;
     opts = null;
@@ -103,9 +80,24 @@ exports = module.exports = function (streamfns, opts, cb) {
   });
 }
 
+//
+// Images
+//
+exports.Images      = Images;
 exports.buildImages = buildImages;
 
-var runImages = exports.runImages = function (images, opts, cb) {
+var runImages = exports.runImages = 
+
+/**
+ * todo: fix, doc and expose
+ *
+ * @name 
+ * @function
+ * @param images 
+ * @param opts 
+ * @param cb 
+ */
+function (images, opts, cb) {
   var imageNames = images.map(function (x) { return x.RepoTags[0] });
   var containers = new Containers(createDocker(defaultOpts));
   logEvents(containers);
@@ -113,7 +105,18 @@ var runImages = exports.runImages = function (images, opts, cb) {
   runContainers(containers, opts, imageNames, cb);
 }
 
-exports.runGroup = function (group, opts) {
+exports.runGroup = 
+
+/**
+ * todo: fix, doc and expose
+ * 
+ * @name 
+ * @function
+ * @private
+ * @param group 
+ * @param opts 
+ */
+function (group, opts) {
   var images = new Images(createDocker(defaultOpts));
   images.listGroup(group, function (err, res) {
     if (err) return console.error(err);
@@ -125,6 +128,18 @@ exports.runGroup = function (group, opts) {
   });
 }
 
+//
+// Containers
+// 
+exports.Containers    = Containers;
+exports.runContainers = runContainers;
+
+//
+// Misc
+//
+exports.logEvents = logEvents;
+
+// TODO:
 // provide way to query for all containers/images for a given repo
 
 // provide a way to stop all containers for a matching group (i.e. repo name)
