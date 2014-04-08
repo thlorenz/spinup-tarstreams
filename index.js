@@ -40,10 +40,17 @@ var defaultContainerOpts = {
     }
 }
 
+function inspect(obj, depth) {
+  console.error(require('util').inspect(obj, false, depth || 5, true));
+}
+
 exports = module.exports = 
 
 /**
- * Creates images for each provided tar stream and then starts a container for each.
+ * Creates images for each provided tar stream and then starts a container for each image that matches the given group.
+ * This means that containers for already existing images for a group will be started as well in order to allow
+ * reusing existing images instead of having to rebuild them for each run.
+ * 
  * Containers are exposing the provided port and bind it to a unique port on the host machine.
  *
  * This is the only API you will need most likely, all that follows is considered advanced API.
@@ -51,13 +58,13 @@ exports = module.exports =
  * @name spinupTarstreams
  * @function
  * @param {Array.<function>} streamfns functions that return a tar stream each
- * @param {Object} opts             options that describe how each image and container is created and started
- * @param {string} opts.loglevel    (default: `'info'`) if set logs will be written to `stderr` (@see spinupTarstreams:logEvents)
- * @param {Object} opts.container   options that describe how each container is created and started (@see spinupTarstreams::runContainers)
- * @param {string} opts.dockerhost  (default: `$DOCKER_HOST or 'tcp://127.0.0.1:4243'`) the host that docker is running on 
- * @param {string} opts.group       (default: `'ungrouped'`) the group aka REPOSITORY to which the add the created images
- * @param {boolean} opts.useExistingImages (default: `true`) if false all images are created, even if one for the group and tag exists 
- * @param {function} cb             called back when all images were created or with an error
+ * @param {Object=} opts             options that describe how each image and container is created and started
+ * @param {string=} opts.loglevel    (default: `'info'`) if set logs will be written to `stderr` (@see spinupTarstreams:logEvents)
+ * @param {Object=} opts.container   options that describe how each container is created and started (@see spinupTarstreams::runContainers)
+ * @param {string=} opts.dockerhost  (default: `$DOCKER_HOST or 'tcp://127.0.0.1:4243'`) the host that docker is running on 
+ * @param {string=} opts.group       (default: `'ungrouped'`) the group aka REPOSITORY to which the add the created images and whose containers to start
+ * @param {boolean=} opts.useExistingImages (default: `true`) if false all images are created, even if one for the group and tag exists 
+ * @param {function} cb              called back when all images were created or with an error
  */
 function spinupTarstreams(streamfns, opts, cb) {
   if (typeof opts === 'function') {
@@ -72,11 +79,13 @@ function spinupTarstreams(streamfns, opts, cb) {
   opts.container.start  = xtend(defaultContainerOpts.start, opts.container.start);
 
   var images = new Images(opts.docker);
-  logEvents(images);
+  if (opts.loglevel) logEvents(images, opts.loglevel);
 
   buildImages(images, streamfns, opts.group, opts.useExistingImages, function (err, res) {
     if (err) return cb(err);
-    cb(null, res);
+    var containers = new Containers(opts.docker);
+    if (opts.loglevel) logEvents(containers, opts.loglevel);
+    runGroup(images, containers, opts.group, opts.container, cb)
   });
 }
 
@@ -89,42 +98,37 @@ exports.buildImages = buildImages;
 var runImages = exports.runImages = 
 
 /**
- * todo: fix, doc and expose
+ * Starts up a container for each given image.
  *
- * @name 
+ * @name spinupTarstreams::runImages
  * @function
- * @param images 
- * @param opts 
- * @param cb 
+ * @param {Object} containers         instance of initialized `{Containers}`
+ * @param {Array.<string>} imagesToRun names of images to run of the form `'group:tag'`
+ * @param {Object=} containerOpts options that describe how each container is created and started (@see spinupTarstreams::runContainers)
+ * @param {function} cb called back when all containers for the images were started or with an error
  */
-function (images, opts, cb) {
-  var imageNames = images.map(function (x) { return x.RepoTags[0] });
-  var containers = new Containers(createDocker(defaultOpts));
-  logEvents(containers);
-
-  runContainers(containers, opts, imageNames, cb);
+function (containers, imagesToRun, containerOpts, cb) {
+  runContainers(containers, containerOpts, imagesToRun, cb);
 }
 
-exports.runGroup = 
+var runGroup = exports.runGroup = 
 
 /**
- * todo: fix, doc and expose
+ * Starts up a container for each image of the given group that is found.
  * 
- * @name 
+ * @name spinupTarstreams::runGroup
  * @function
- * @private
- * @param group 
- * @param opts 
+ * @param {Object} images      instance of initialized `{Images}`
+ * @param {Object} containers  instance of initialized `{Containers}`
+ * @param {string} group       group of images for which to start containers
+ * @param {Object=} containerOpts options that describe how each container is created and started (@see spinupTarstreams::runContainers)
+ * @param {function} cb        called back when all containers for the group were started or with an error
  */
-function (group, opts) {
-  var images = new Images(createDocker(defaultOpts));
-  images.listGroup(group, function (err, res) {
-    if (err) return console.error(err);
-
-    runImages(res, opts, function (err, res) {
-      if (err) return console.error(err);
-      console.log(res);    
-    })
+function (images, containers, group, containerOpts, cb) {
+  images.listGroup(group, function (err, imagesOfGroup) {
+    if (err) return cb(err);
+    var imageNames = imagesOfGroup.map(function (x) { return x.RepoTags[0] });
+    runImages(containers, imageNames, containerOpts, cb); 
   });
 }
 
@@ -147,37 +151,3 @@ exports.logEvents = logEvents;
 // provide a way to remove all containers for a group
 
 // provide a way to remove all images for a group
-
-// Test
-function createImages() {
-
-  var path = require('path') 
-    , dockerifyRepo = require('dockerify-github-repo')
-
-  var group = 'bmarkdown';
-
-  function filter(tag) {
-    var num = parseInt(tag.split('-')[0], 10);
-    return num > 8;
-  }
-
-  dockerifyRepo(
-      'thlorenz/browserify-markdown-editor'
-    , { filter: filter, dockerify: {  dockerfile: path.join(__dirname, 'examples', 'Dockerfile') } }
-    , function (err, streamfns) {
-        if (err) return console.error(err);
-        exports(streamfns,{ group: group }, function (err, res) {
-          if (err) return console.error(err);
-          console.log(res);
-        });
-      }
-  );
-}
-
-if (!module.parent && typeof window === 'undefined') {
-  var containerOpts = xtend(defaultContainerOpts, { exposePort: 3000 });
-  createImages();
-  // TODO: port forwarding broken, needs to look like this:
-  // 9186065b0292        bmarkdown:009-improved-styling   bash About a minute ago   Up About a minute   0.0.0.0:49222->3000/tcp   high_davinci
-  //createContainersForGroup('bmarkdown', containerOpts);
-}
