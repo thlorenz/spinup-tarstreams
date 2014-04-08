@@ -1,6 +1,7 @@
 'use strict';
 
 var path         = require('path')
+  , log          = require('npmlog')
   , runnel       = require('runnel')
   , dockerode    = require('dockerode')
   , xtend        = require('xtend')
@@ -8,6 +9,8 @@ var path         = require('path')
   , Images       = require('./lib/images')
   , Containers   = require('./lib/containers')
   , portBindings = require('./lib/port-bindings')
+
+var si = typeof setImmediate === 'function' ? setImmediate : function (fn) { setTimeout(fn, 0) };
 
 function createDocker(opts) {
   var dockerhost = opts.dockerhost
@@ -23,25 +26,60 @@ function imageName(group, id) {
   return group + ':' + id;
 }
 
-function buildImages(images, streamfns, group, cb) {
-  var tasks = Object.keys(streamfns)
-    .map(function (k) {
-      var image = imageName(group, k)
-        , streamfn = streamfns[k];
+function inspect(obj, depth) {
+  return require('util').inspect(obj, false, depth || 5, true);
+}
 
-      return function (cb_) {
-        images.build(streamfn(), image, cb_);
-      }
-    });
+function buildImages(images, streamfns, group, useExisting, cb) {
+  if (!useExisting) return build(streamfns, cb);
 
-  runnel(tasks.concat(cb));
+  images.listGroup(group, function (err, res) {
+    if (err) return cb(err);
+
+    var existingImageTags = res.map(function (x) { 
+      return images.deserializeImageName(x.RepoTags[0]).tag 
+    })
+
+    inspect(streamfns);
+
+    var tobuild = Object.keys(streamfns)
+      .filter(function (k) { return !~existingImageTags.indexOf(k) })
+      .reduce(function (acc, k) { 
+        acc[k] = streamfns[k];
+        return acc;
+      }, {})
+
+    log.info('images', 'Only building not yet existing images');
+    build(tobuild, cb);
+  })
+
+  function build(fns, built) {
+    var keys = Object.keys(fns);
+    if (!keys.length) { 
+      log.warn('images', 'No images need to be built');
+      return si(built.bind(null, null, []));
+    }
+
+    log.info('images', 'building images', keys);
+
+    var tasks = keys 
+      .map(function (k) {
+        var image = imageName(group, k)
+          , streamfn = fns[k];
+
+        return function (cb_) {
+            images.build(streamfn(), image, cb_);
+          }
+      });
+
+    runnel(tasks.concat(built));
+  }
 }
 
 // containers
 function runContainers(containers, opts, imageNames, cb) {
   var created = {};
 
-  // todo: async-reduce
   var tasks = imageNames
     .map(function (imageName, idx) {
       return function (cb_) {
@@ -54,8 +92,8 @@ function runContainers(containers, opts, imageNames, cb) {
           opts.create.ExposedPorts[opts.exposePort + '/tcp'] = {};
         }
 
-        containers.run(
-          { create : xtend(opts.create, { Image : imageName })
+        containers.run({ 
+            create : xtend(opts.create, { Image : imageName })
           , start  : xtend(opts.start, { PortBindings: pb })
           }
         , function (err, container) { 
@@ -81,9 +119,10 @@ function runContainers(containers, opts, imageNames, cb) {
 }
 
 var defaultOpts = {
-    dockerhost    : process.env.DOCKER_HOST || 'tcp : //127.0.0.1 : 4243'
-  , group         : 'ungrouped'
-};
+    dockerhost        : process.env.DOCKER_HOST || 'tcp : //127.0.0.1 : 4243'
+  , group             : 'ungrouped'
+  , useExistingImages : true
+}
 
 var defaultContainerOpts = {
     hostPortStart   : 49222
@@ -99,7 +138,7 @@ var defaultContainerOpts = {
     }
 }
 
-var go = module.exports = function (streamfns, opts, cb) {
+exports = module.exports = function (streamfns, opts, cb) {
   if (typeof opts === 'function') {
     cb = opts;
     opts = null;
@@ -114,9 +153,31 @@ var go = module.exports = function (streamfns, opts, cb) {
   var images = new Images(opts.docker);
   logEvents(images);
 
-  buildImages(images, streamfns, opts.group, function (err, res) {
+  buildImages(images, streamfns, opts.group, opts.useExistingImages, function (err, res) {
     if (err) return cb(err);
     cb(null, res);
+  });
+}
+
+exports.buildImages = buildImages;
+
+var runImages = exports.runImages = function (images, opts, cb) {
+  var imageNames = images.map(function (x) { return x.RepoTags[0] });
+  var containers = new Containers(createDocker(defaultOpts));
+  logEvents(containers);
+
+  runContainers(containers, opts, imageNames, cb);
+}
+
+exports.runGroup = function (group, opts) {
+  var images = new Images(createDocker(defaultOpts));
+  images.listGroup(group, function (err, res) {
+    if (err) return console.error(err);
+
+    runImages(res, opts, function (err, res) {
+      if (err) return console.error(err);
+      console.log(res);    
+    })
   });
 }
 
@@ -129,49 +190,35 @@ var go = module.exports = function (streamfns, opts, cb) {
 // provide a way to remove all images for a group
 
 // Test
-
-var dockerifyRepo = require('dockerify-github-repo');
-function filter(tag) {
-  return /*tag === '000-nstarted' || */ tag === '009-improved-styling';
-}
-
 function createImages() {
+
+  var path = require('path') 
+    , dockerifyRepo = require('dockerify-github-repo')
+
+  var group = 'bmarkdown';
+
+  function filter(tag) {
+    var num = parseInt(tag.split('-')[0], 10);
+    return num > 8;
+  }
+
   dockerifyRepo(
       'thlorenz/browserify-markdown-editor'
-    , { filter: filter, dockerify: {  dockerfile: path.join(__dirname, 'lib', 'Dockerfile') } }
+    , { filter: filter, dockerify: {  dockerfile: path.join(__dirname, 'examples', 'Dockerfile') } }
     , function (err, streamfns) {
         if (err) return console.error(err);
-        go(streamfns,{ group: 'bmarkdown' }, function (err, res) {
+        exports(streamfns,{ group: group }, function (err, res) {
           if (err) return console.error(err);
           console.log(res);
         });
-      });
-}
-
-function createContainers(images, opts, cb) {
-  var imageNames = images.map(function (x) { return x.RepoTags[0] });
-  var containers = new Containers(createDocker(defaultOpts));
-  logEvents(containers);
-
-  runContainers(containers, opts, imageNames, cb);
-}
-
-function createContainersForGroup(group, opts) {
-  var images = new Images(createDocker(defaultOpts));
-  images.listGroup(group, function (err, res) {
-    if (err) return console.error(err);
-
-    createContainers(res, opts, function (err, res) {
-      if (err) return console.error(err);
-      console.log(res);    
-    })
-  });
+      }
+  );
 }
 
 if (!module.parent && typeof window === 'undefined') {
   var containerOpts = xtend(defaultContainerOpts, { exposePort: 3000 });
-  //createImages();
+  createImages();
   // TODO: port forwarding broken, needs to look like this:
   // 9186065b0292        bmarkdown:009-improved-styling   bash About a minute ago   Up About a minute   0.0.0.0:49222->3000/tcp   high_davinci
-  createContainersForGroup('bmarkdown', containerOpts);
+  //createContainersForGroup('bmarkdown', containerOpts);
 }
