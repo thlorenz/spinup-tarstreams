@@ -9,8 +9,7 @@ var path         = require('path')
   , Images       = require('./lib/images')
   , Containers   = require('./lib/containers')
   , portBindings = require('./lib/port-bindings')
-
-var si = typeof setImmediate === 'function' ? setImmediate : function (fn) { setTimeout(fn, 0) };
+  , buildImages  = require('./lib/build-images')
 
 function createDocker(opts) {
   var dockerhost = opts.dockerhost
@@ -19,61 +18,6 @@ function createDocker(opts) {
     , port       = parts[parts.length - 1]
 
   return dockerode({ host: host, port: port });
-}
-
-// images
-function imageName(group, id) {
-  return group + ':' + id;
-}
-
-function inspect(obj, depth) {
-  return require('util').inspect(obj, false, depth || 5, true);
-}
-
-function buildImages(images, streamfns, group, useExisting, cb) {
-  if (!useExisting) return build(streamfns, cb);
-
-  images.listGroup(group, function (err, res) {
-    if (err) return cb(err);
-
-    var existingImageTags = res.map(function (x) { 
-      return images.deserializeImageName(x.RepoTags[0]).tag 
-    })
-
-    inspect(streamfns);
-
-    var tobuild = Object.keys(streamfns)
-      .filter(function (k) { return !~existingImageTags.indexOf(k) })
-      .reduce(function (acc, k) { 
-        acc[k] = streamfns[k];
-        return acc;
-      }, {})
-
-    log.info('images', 'Only building not yet existing images');
-    build(tobuild, cb);
-  })
-
-  function build(fns, built) {
-    var keys = Object.keys(fns);
-    if (!keys.length) { 
-      log.warn('images', 'No images need to be built');
-      return si(built.bind(null, null, []));
-    }
-
-    log.info('images', 'building images', keys);
-
-    var tasks = keys 
-      .map(function (k) {
-        var image = imageName(group, k)
-          , streamfn = fns[k];
-
-        return function (cb_) {
-            images.build(streamfn(), image, cb_);
-          }
-      });
-
-    runnel(tasks.concat(built));
-  }
 }
 
 // containers
