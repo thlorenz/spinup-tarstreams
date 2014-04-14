@@ -3,15 +3,12 @@
 var path          = require('path')
   , log           = require('npmlog')
   , xtend         = require('xtend')
-  , createDocker  = require('./lib/create-docker')
-  , logEvents     = require('./lib/log-events')
-  , Images        = require('./lib/images')
-  , Containers    = require('./lib/containers')
+  , dockops       = require('dockops')
   , buildImages   = require('./lib/build-images')
   , runContainers = require('./lib/run-containers')
 
 var defaultOpts = {
-    dockerhost        : process.env.DOCKER_HOST || 'tcp://127.0.0.1:4243'
+    dockerhost        : process.env.DOCKER_HOST || 'tcp:///var/run/docker.sock'
   , group             : 'ungrouped'
   , useExistingImages : true
   , loglevel          : 'info'            
@@ -21,6 +18,7 @@ var defaultContainerOpts = {
     hostPortStart   : 49222
   , exposePort      : 8080
   , startRetries    : 5
+  , removeExisting  : true
   , create: {
       AttachStdout    : true
     , AttachStderr    : true
@@ -51,12 +49,12 @@ exports = module.exports =
  * @function
  * @param {Array.<function>} streamfns functions that return a tar stream each
  * @param {Object=} opts             options that describe how each image and container is created and started
- * @param {string=} opts.loglevel    (default: `'info'`) if set logs will be written to `stderr` (@see spinupTarstreams:logEvents)
+ * @param {string=} opts.loglevel    (default: `'info'`) if set logs will be written to `stderr` (@see dockops:logEvents)
  * @param {Object=} opts.container   options that describe how each container is created and started (@see spinupTarstreams::runContainers)
  * @param {string=} opts.dockerhost  (default: `$DOCKER_HOST or 'tcp://127.0.0.1:4243'`) the host that docker is running on 
  * @param {string=} opts.group       (default: `'ungrouped'`) the group aka REPOSITORY to which the add the created images and whose containers to start
  * @param {boolean=} opts.useExistingImages (default: `true`) if false all images are created, even if one for the group and tag exists 
- * @param {function} cb              called back when all images were created or with an error
+ * @param {function} cb              when finished, calls back with **all** currently running containers for the given group or with an error
  */
 function spinupTarstreams(streamfns, opts, cb) {
   if (typeof opts === 'function') {
@@ -65,18 +63,18 @@ function spinupTarstreams(streamfns, opts, cb) {
   }
 
   opts                  = xtend(defaultOpts, opts);
-  opts.docker           = opts.docker || createDocker(opts);
+  opts.docker           = opts.docker || dockops.createDocker(opts.dockerhost);
   opts.container        = opts.container || {};
   opts.container.create = xtend(defaultContainerOpts.create, opts.container.create);
   opts.container.start  = xtend(defaultContainerOpts.start, opts.container.start);
 
-  var images = new Images(opts.docker);
-  if (opts.loglevel) logEvents(images, opts.loglevel);
+  var images = new dockops.Images(opts.docker);
+  if (opts.loglevel) dockops.logEvents(images, opts.loglevel);
 
   buildImages(images, streamfns, opts.group, opts.useExistingImages, function (err, res) {
     if (err) return cb(err);
-    var containers = new Containers(opts.docker);
-    if (opts.loglevel) logEvents(containers, opts.loglevel);
+    var containers = new dockops.Containers(opts.docker);
+    if (opts.loglevel) dockops.logEvents(containers, opts.loglevel);
     runGroup(images, containers, opts.group, opts.container, cb)
   });
 }
@@ -84,7 +82,6 @@ function spinupTarstreams(streamfns, opts, cb) {
 //
 // Images
 //
-exports.Images      = Images;
 exports.buildImages = buildImages;
 
 var runImages = exports.runImages = 
@@ -94,7 +91,7 @@ var runImages = exports.runImages =
  *
  * @name spinupTarstreams::runImages
  * @function
- * @param {Object} containers         instance of initialized `{Containers}`
+ * @param {Object} containers         instance of initialized `{dockops.Containers}`
  * @param {Array.<string>} imagesToRun names of images to run of the form `'group:tag'`
  * @param {Object=} containerOpts options that describe how each container is created and started (@see spinupTarstreams::runContainers)
  * @param {function} cb called back when all containers for the images were started or with an error
@@ -114,32 +111,20 @@ var runGroup = exports.runGroup =
  * @param {Object} containers  instance of initialized `{Containers}`
  * @param {string} group       group of images for which to start containers
  * @param {Object=} containerOpts options that describe how each container is created and started (@see spinupTarstreams::runContainers)
- * @param {function} cb        called back when all containers for the group were started or with an error
+ * @param {function} cb        when finished, calls back with **all** currently running containers for the group or with an error
  */
 function (images, containers, group, containerOpts, cb) {
   images.listGroup(group, function (err, imagesOfGroup) {
     if (err) return cb(err);
     var imageNames = imagesOfGroup.map(function (x) { return x.RepoTags[0] });
-    runImages(containers, imageNames, containerOpts, cb); 
+    runImages(containers, imageNames, containerOpts, function (err) {
+      if (err) return cb(err);
+      containers.listGroupRunning(group, cb);
+    });
   });
 }
 
 //
 // Containers
 // 
-exports.Containers    = Containers;
 exports.runContainers = runContainers;
-
-//
-// Misc
-//
-exports.logEvents = logEvents;
-
-// TODO:
-// provide way to query for all containers/images for a given repo
-
-// provide a way to stop all containers for a matching group (i.e. repo name)
-
-// provide a way to remove all containers for a group
-
-// provide a way to remove all images for a group

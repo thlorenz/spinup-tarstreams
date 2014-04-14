@@ -20,6 +20,7 @@ dockerifyRepo(
 function launch(group, streamfns) {
   spinup(streamfns, { group: group, loglevel: 'verbose', container: { exposePort: 3000 } }, function (err, res) {
     if (err) return console.error(err);
-    console.log('Started the following containers: ', res);
+    console.log('The following containers are now running for group ', group);
+    console.log(res);
   });
 }

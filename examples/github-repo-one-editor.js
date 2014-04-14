@@ -8,7 +8,7 @@ var group = 'bmarkdown';
 
 function filter(tag) {
   var num = parseInt(tag.split('-')[0], 10);
-  return num === 5;
+  return num === 9;
 }
 
 dockerifyRepo(
