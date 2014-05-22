@@ -1,5 +1,7 @@
 'use strict';
 
+process.env.TAP_TIMEOUT = 240;
+
 var test = require('tap').test
 var path = require('path') 
   , dockerifyRepo = require('dockerify-github-repo')
@@ -9,7 +11,7 @@ var group = 'bmarkdown-test';
 
 function filter(tag) {
   var num = parseInt(tag.split('-')[0], 10);
-  return num === 9;// || num === 10;
+  return num === 9 || num === 10;
 }
 
 function inspect(obj, depth) {
