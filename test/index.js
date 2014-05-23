@@ -5,6 +5,7 @@ process.env.TAP_TIMEOUT = 240;
 var test = require('tap').test
 var path = require('path') 
   , dockerifyRepo = require('dockerify-github-repo')
+  , dockops = require('dockops')
   , spinup = require('../')
 
 var group = 'bmarkdown-test';
@@ -19,6 +20,14 @@ function inspect(obj, depth) {
 }
 
 test('\nrunning two dockerified tags of a github repo', function (t) {
+  t.plan(8)
+
+  t.on('end', function () {
+    new dockops.Containers(dockops.createDocker(spinup._defaultOpts.dockerhost))
+      .stopRemoveGroup(group, function (err) {
+        if (err) return console.error(err);
+      })
+  });
   
   dockerifyRepo(
       'thlorenz/browserify-markdown-editor'
@@ -26,7 +35,6 @@ test('\nrunning two dockerified tags of a github repo', function (t) {
     , function (err, streamfns) {
         if (err) return console.error(err);
         launch(group, streamfns)
-        t.pass('dockerified streams')
     }
   );
 
@@ -36,12 +44,20 @@ test('\nrunning two dockerified tags of a github repo', function (t) {
         , loglevel: 'silly'
         , container: { exposePort: 3000, /*hostPortStart: 49330*/ } 
       }
-      , function (err, res) {
+      , function (err, containers) {
           if (err) return console.error(err);
-          console.log('The following containers are now running for group ', group);
-          inspect(res);
-          t.end()
+
+          // inspect(containers);
+
+          containers.forEach(function (c) {
+
+            t.equal(c.Command, 'node /src/index.js', 'container has correct command')
+            t.similar(c.Status, /^Up/, 'container is up')
+            t.similar(c.Image, /^bmarkdown-test/, 'container is from correct image')
+            t.equal(c.Ports.length, 1, 'container has 1 port')
+          })
         }
-    );
+    )
+
   }
 })

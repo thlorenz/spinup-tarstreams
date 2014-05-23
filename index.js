@@ -79,6 +79,9 @@ function spinupTarstreams(streamfns, opts, cb) {
   });
 }
 
+// mainly used for testing
+exports._defaultOpts = defaultOpts;
+
 //
 // Images
 //
