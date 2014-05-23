@@ -1,4 +1,4 @@
-# spinup-tarstreams [![build status](https://secure.travis-ci.org/thlorenz/spinup-tarstreams.png)](http://travis-ci.org/thlorenz/spinup-tarstreams)
+# spinup-tarstreams
 
 Spins up tar streams each in it's own docker container.
 
@@ -29,11 +29,6 @@ function launch(group, streamfns) {
 ```
 
 [full exampe](https://github.com/thlorenz/spinup-tarstreams/blob/master/examples/github-repo-all-editors.js)
-
-## Status
-
-Working, but **has no tests** and therefore considered alpha **USE AT YOUR OWN RISK**.
-
 
 ## Installation
 
