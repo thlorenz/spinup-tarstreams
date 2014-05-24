@@ -23,7 +23,7 @@
     "npmlog": "0.0.6",
     "tap": "~0.4.3"
   },
-  "keywords": [],
+  "keywords": [ "docker", "tar", "stream", "devops" ],
   "author": {
     "name": "Thorsten Lorenz",
     "email": "thlorenz@gmx.de",
