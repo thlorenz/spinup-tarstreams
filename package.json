@@ -1,6 +1,6 @@
 {
   "name": "spinup-tarstreams",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Spins up tar streams each in it's own docker container.",
   "main": "index.js",
   "scripts": {
